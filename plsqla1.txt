@@ -1,0 +1,110 @@
+SET SERVEROUTPUT ON
+
+CREATE OR REPLACE PROCEDURE generate_company_report(
+   company_name_param IN VARCHAR2
+)
+AS
+   total_employees NUMBER := 0;
+   total_managers NUMBER := 0;
+   total_salary_employees NUMBER := 0;
+   total_salary_managers NUMBER := 0;
+   average_salary_employees NUMBER := 0;
+   average_salary_managers NUMBER := 0;
+BEGIN
+   -- Calculate the report for the specified company
+   SELECT COUNT(*) INTO total_employees
+   FROM Employee e
+   WHERE e.Employee_name IN (SELECT w.Employee_name FROM Works w WHERE w.Company_name = company_name_param);
+
+   SELECT COUNT(DISTINCT m.Manager_name) INTO total_managers
+   FROM Manages m
+   WHERE m.Manager_name IN (
+     SELECT w.Employee_name
+     FROM Works w
+     WHERE w.Company_name = company_name_param
+   );
+
+   SELECT SUM(w.Salary) INTO total_salary_employees
+   FROM Works w
+   WHERE w.Company_name = company_name_param;
+
+   SELECT SUM(w.Salary) INTO total_salary_managers
+   FROM Works w
+   WHERE w.Employee_name IN (
+     SELECT m.Manager_name
+     FROM Manages m
+     WHERE m.Manager_name IN (
+       SELECT w.Employee_name
+       FROM Works w
+       WHERE w.Company_name = company_name_param
+     )
+   );
+
+   IF total_employees > 0 THEN
+      average_salary_employees := total_salary_employees / total_employees;
+   END IF;
+
+   IF total_managers > 0 THEN
+      average_salary_managers := total_salary_managers / total_managers;
+   END IF;
+
+   -- Print the report for the specified company
+   DBMS_OUTPUT.PUT_LINE('Company Name: ' || company_name_param);
+   DBMS_OUTPUT.PUT_LINE('Total Employees: ' || total_employees);
+   DBMS_OUTPUT.PUT_LINE('Total Managers: ' || total_managers);
+   DBMS_OUTPUT.PUT_LINE('Average Salary Employees: ' || TO_CHAR(average_salary_employees, '999,999.99'));
+   IF total_managers > 0 THEN
+      DBMS_OUTPUT.PUT_LINE('Average Salary Managers: ' || TO_CHAR(average_salary_managers, '999,999.99'));
+   ELSE
+      DBMS_OUTPUT.PUT_LINE('Average Salary Managers: 0');
+   END IF;
+END;
+/
+
+BEGIN
+generate_company_report('General Electric');
+END;
+/
+
+
+CREATE OR REPLACE PROCEDURE give_raises_by_city(
+    city_for_raise IN VARCHAR2,
+    manager_raise IN NUMBER,
+    non_manager_raise IN NUMBER
+)
+AS
+BEGIN
+    
+    UPDATE Works w
+    SET w.salary = w.salary * (1 + manager_raise / 100)
+    WHERE w.Employee_name IN (
+        SELECT m.Manager_name
+        FROM Manages m
+        WHERE m.Manager_name = w.Employee_name
+    )
+    AND w.Company_name IN (
+        SELECT c.Company_name
+        FROM Company c
+        WHERE c.City = city_for_raise
+    );
+    
+    UPDATE Works w 
+    SET w.Salary = w.Salary * (1 + non_manager_raise / 100)
+    WHERE w.Employee_name NOT IN (
+        SELECT m.Manager_name
+        FROM Manages m
+    )
+    AND w.Company_name IN (
+        SELECT c.Company_name
+        FROM Company c
+        WHERE c.City = city_for_raise
+    );
+    
+    COMMIT;
+END;
+/
+
+BEGIN
+    give_raises_by_city('Silicon Valley', 10, 5);
+END;
+/
